@@ -277,8 +277,16 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
 
         elif ttl_available and p == "7":
             data = cf.get_total_tls(zone_id)
-            print(f"{c('Status Code:', 'CYAN')} {data.get('status_code')}")
-            print(json.dumps(data, indent=2))
+            if data.get("success"):
+                result = data.get("result", {})
+                enabled = result.get("enabled", False)
+                status = result.get("status", "N/A")
+                status_text = c("AKTIF", "HIJAU") if enabled else c("NONAKTIF", "MERAH")
+                print(f"\n{c('=== STATUS TOTAL TLS ===', 'BOLD+CYAN')}")
+                print(f"  {c('Status:', 'PUTIH')} {status_text}")
+                print(f"  {c('Detail:', 'PUTIH')} {status if status else 'Tidak ada detail status'}")
+            else:
+                print(f"{c('Gagal mengambil status Total TLS.', 'MERAH')}")
 
         elif ttl_available and p == "8":
             ca = input(f"{c('→ CA (google/lets_encrypt/ssl_com) [google]: ', 'HIJAU')}").strip() or "google"
