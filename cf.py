@@ -71,7 +71,7 @@ def show_logo():
     logo = (
         f"{c('╔══════════════════════════════════╗', 'BIRU')}\n"
         f"{c('║', 'BIRU')}  {c('🔐 CLOUDFLARE MANAGER CLI', 'BOLD+CYAN')}       {c('║', 'BIRU')}\n"
-        f"{c('║', 'BIRU')}  {c('   Author: Deki_niswara', 'UNGU')}      {c('║', 'BIRU')}\n"
+        f"{c('║', 'BIRU')}  {c('   Author: Deki_niswara', 'UNGU')}         {c('║', 'BIRU')}\n"
         f"{c('╚══════════════════════════════════╝', 'BIRU')}"
     )
     print(logo)
