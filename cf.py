@@ -70,9 +70,9 @@ def format_date(date_str):
 def show_logo():
     logo = (
         f"{c('╔══════════════════════════════════╗', 'BIRU')}\n"
-        f"{c('║', 'BIRU')}  {c('🔐 CLOUDFLARE MANAGER CLI', 'BOLD+CYAN')}       {c('║', 'BIRU')}\n"
-        f"{c('║', 'BIRU')}  {c('   Author: Deki_niswara', 'UNGU')}            {c('║', 'BIRU')}\n"
-        f"{c('╚══════════════════════════════════╝', 'BIRU')}"
+ fix-total-tls-output
+        f"{c('║', 'BIRU')}{' ' * 4}{c('🔐 CLOUDFLARE MANAGER CLI', 'BOLD+CYAN')}{' ' * 5}{c('║', 'BIRU')}\n"
+        f"{c('║', 'BIRU')}{' ' * 7}{c('Author: Deki_niswara', 'UNGU')}{' ' * 7}{c('║', 'BIRU')}\n"
     )
     print(logo)
 
