@@ -1,0 +1,443 @@
+#!/usr/bin/env python3
+
+import os
+import json
+import subprocess
+import requests
+import time
+
+# =========================
+# Warna ANSI & Formatting
+# =========================
+C = {
+    "HITAM": "\033[30m",
+    "MERAH": "\033[31m",
+    "HIJAU": "\033[32m",
+    "KUNING": "\033[33m",
+    "BIRU": "\033[34m",
+    "UNGU": "\033[35m",
+    "CYAN": "\033[36m",
+    "PUTIH": "\033[37m",
+    "BOLD": "\033[1m",
+    "UNDERLINE": "\033[4m",
+    "RESET": "\033[0m"
+}
+
+def c(text, color):
+    text = str(text) if not isinstance(text, str) else text
+    if not color:
+        return text
+    colors = color.split('+')
+    ansi_codes = []
+    for c_name in colors:
+        if c_name in C:
+            ansi_codes.append(C[c_name])
+        else:
+            print(f"{C['MERAH']}⚠️ Warna '{c_name}' tidak dikenal.{C['RESET']}")
+    return ''.join(ansi_codes) + text + C['RESET']
+
+# =========================
+# Animasi Loading
+# =========================
+def loading(msg, duration=0.5):
+    for char in ['|', '/', '-', '\\']:
+        print(f"\r{msg} {char}  ", end="", flush=True)
+        time.sleep(duration / 4)
+    print(f"\r{msg} {c('✅', 'HIJAU')}", end="", flush=True)
+    time.sleep(0.5)
+    print()
+
+# =========================
+# ASCII Logo
+# =========================
+def show_logo():
+    logo = (
+        f"{c('╔══════════════════════════════════╗', 'BIRU')}\n"
+        f"{c('║', 'BIRU')}  {c('🔐 CLOUDFLARE MANAGER CLI', 'BOLD+CYAN')}       {c('║', 'BIRU')}\n"
+        f"{c('║', 'BIRU')}  {c('   by Python & Cloudflare API', 'UNGU')}   {c('║', 'BIRU')}\n"
+        f"{c('╚══════════════════════════════════╝', 'BIRU')}"
+    )
+    print(logo)
+
+# =========================
+# Konfigurasi
+# =========================
+API_BASE = "https://api.cloudflare.com/client/v4"
+SESSION_FILE = os.path.expanduser("~/.acme.sh/cloudflare_session.json")
+
+# =========================
+# Session Management
+# =========================
+def save_session(data):
+    os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
+    with open(SESSION_FILE, 'w') as f:
+        json.dump(data, f)
+
+def load_session():
+    if os.path.isfile(SESSION_FILE):
+        try:
+            with open(SESSION_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+    return None
+
+def clear_session():
+    if os.path.isfile(SESSION_FILE):
+        os.remove(SESSION_FILE)
+
+# =========================
+# Cloudflare API Wrapper
+# =========================
+class CloudflareAPI:
+    def __init__(self, email=None, api_key=None, api_token=None):
+        self.email = email
+        self.api_key = api_key
+        self.api_token = api_token
+
+    def _headers(self):
+        h = {"Content-Type": "application/json"}
+        if self.api_token:
+            h["Authorization"] = f"Bearer {self.api_token}"
+        else:
+            h["X-Auth-Email"] = self.email or ""
+            h["X-Auth-Key"] = self.api_key or ""
+        return h
+
+    def _req(self, method, path, **kwargs):
+        url = f"{API_BASE}{path}"
+        try:
+            r = requests.request(method, url, headers=self._headers(), timeout=60, **kwargs)
+        except requests.RequestException as e:
+            return {"success": False, "errors": [{"message": f"HTTP error: {e}"}], "status_code": None, "raw": None}
+        try:
+            data = r.json()
+        except Exception:
+            data = {"success": False, "errors": [{"message": "Non-JSON response"}]}
+        data["status_code"] = r.status_code
+        data["raw"] = r.text
+        return data
+
+    def list_zones(self): return self._req("GET", "/zones")
+    def add_domain(self, domain): return self._req("POST", "/zones", json={"name": domain, "jump_start": True})
+    def get_zone_id(self, domain):
+        zones = self.list_zones()
+        for z in zones.get("result", []) if zones.get("result") else []:
+            if z.get("name") == domain:
+                return z.get("id")
+        return None
+    def delete_zone(self, zone_id): return self._req("DELETE", f"/zones/{zone_id}")
+    def list_dns_records(self, zone_id): return self._req("GET", f"/zones/{zone_id}/dns_records")
+    def add_dns_record(self, zone_id, record_type, name, content, ttl=120, proxied=False):
+        payload = {"type": record_type, "name": name, "content": content, "ttl": ttl, "proxied": proxied}
+        return self._req("POST", f"/zones/{zone_id}/dns_records", json=payload)
+    def delete_dns_record(self, zone_id, record_id): return self._req("DELETE", f"/zones/{zone_id}/dns_records/{record_id}")
+    def update_dns_record(self, zone_id, record_id, record_type, name, content, ttl=120, proxied=False):
+        payload = {"type": record_type, "name": name, "content": content, "ttl": ttl, "proxied": proxied}
+        return self._req("PUT", f"/zones/{zone_id}/dns_records/{record_id}", json=payload)
+    def get_edge_certificates(self, zone_id): return self._req("GET", f"/zones/{zone_id}/ssl/certificate_packs")
+    def get_total_tls(self, zone_id): return self._req("GET", f"/zones/{zone_id}/acm/total_tls")
+    def set_total_tls(self, zone_id, enabled=True, certificate_authority="google", validity_period=None):
+        payload = {"enabled": bool(enabled), "certificate_authority": certificate_authority}
+        if validity_period is not None:
+            payload["validity_period"] = int(validity_period)
+        return self._req("POST", f"/zones/{zone_id}/acm/total_tls", data=json.dumps(payload))
+    def list_origin_ca_certs(self, zone_id, page=1, per_page=50):
+        params = {"zone_id": zone_id, "page": page, "per_page": per_page}
+        return self._req("GET", "/certificates", params=params)
+    def get_origin_ca_cert(self, certificate_id): return self._req("GET", f"/certificates/{certificate_id}")
+
+# =========================
+# Cek Total TLS
+# =========================
+def total_tls_available(cf: CloudflareAPI, zone_id: str):
+    resp = cf.get_total_tls(zone_id)
+    if resp.get("success"):
+        return True, resp
+    errs = resp.get("errors") or []
+    if resp.get("status_code") == 401 and any(e.get("code") == 1450 for e in errs):
+        return False, resp
+    return True, resp
+
+# =========================
+# Zone Manager (Lengkap)
+# =========================
+def manage_zone(cf: CloudflareAPI, zone: dict):
+    zone_id = zone["id"]
+    zone_name = zone["name"]
+    ttl_available, _ = total_tls_available(cf, zone_id)
+
+    while True:
+        print(f"\n{c('⚙️  ZONE MANAGER:', 'BIRU')} {c(zone_name.upper(), 'BOLD+PUTIH')}")
+        print(f"{c('─' * 50, 'BIRU')}")
+        print(f"{c('1', 'HIJAU')}. 🔍 Lihat DNS Record")
+        print(f"{c('2', 'HIJAU')}. ➕ Tambah DNS Record")
+        print(f"{c('3', 'HIJAU')}. ❌ Hapus DNS Record")
+        print(f"{c('4', 'HIJAU')}. ✏️  Update DNS Record")
+        print(f"{c('5', 'CYAN')}. 🛡️  Lihat Semua Edge Certificates")
+        print(f"{c('6', 'CYAN')}. ✅ Lihat Edge Certificates (AKTIF)")
+        if ttl_available:
+            print(f"{c('7', 'MERAH')}. 🔐 Total TLS - Lihat Status")
+            print(f"{c('8', 'MERAH')}. 🔐 Total TLS - Enable (pilih CA)")
+            print(f"{c('9', 'MERAH')}. 🔐 Total TLS - Disable")
+            next_base = 10
+        else:
+            print(f"{c('7', 'MERAH')} ⚠️  (Total TLS tidak tersedia — butuh ACM)")
+            next_base = 8
+        print(f"{c(next_base, 'KUNING')}. 🪪 Origin CA - Daftar Sertifikat")
+        print(f"{c(next_base+1, 'KUNING')}. 💾 Origin CA - Ambil & Simpan Sertifikat (PEM)")
+        print(f"{c('0', 'MERAH')}. 🔙 Kembali")
+        p = input(f"\n{c('→ Pilih: ', 'CYAN')}").strip()
+
+        if p == "1":
+            resp = cf.list_dns_records(zone_id)
+            if not resp.get("success"):
+                print(f"{c('❌ Gagal ambil DNS:', 'MERAH')} {resp.get('raw')[:100]}...")
+            else:
+                print(f"\n{c('=== DNS RECORDS ===', 'BOLD+HIJAU')}")
+                for r in resp.get("result", []):
+                    proxied = "cloudflare" if r.get("proxied", False) else "dns only"
+                    color = "MERAH" if proxied == "cloudflare" else "HIJAU"
+                    print(f"  {c(r['type'], 'KUNING')} {c(r['name'], 'PUTIH')} → {c(r['content'], 'CYAN')} [{c(proxied, color)}]")
+
+        elif p == "2":
+            rtype = input(f"{c('→ Tipe (A/CNAME/TXT): ', 'HIJAU')}").strip().upper()
+            name = input(f"{c('→ Nama (www): ', 'HIJAU')}").strip()
+            content = input(f"{c('→ Konten (IP): ', 'HIJAU')}").strip()
+            proxied = input(f"{c('→ Aktifkan proxy (y/n)? ', 'KUNING')}").strip().lower() == "y"
+            res = cf.add_dns_record(zone_id, rtype, name, content, proxied=proxied)
+            if res.get("success"):
+                print(f"{c('✅ Berhasil ditambahkan!', 'HIJAU')}")
+            else:
+                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
+
+        elif p == "3":
+            rid = input(f"{c('→ ID record: ', 'MERAH')}").strip()
+            res = cf.delete_dns_record(zone_id, rid)
+            if res.get("success"):
+                print(f"{c('🗑️ Record dihapus.', 'HIJAU')}")
+            else:
+                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
+
+        elif p == "4":
+            rid = input(f"{c('→ ID record: ', 'HIJAU')}").strip()
+            rtype = input(f"{c('→ Tipe baru: ', 'HIJAU')}").strip().upper()
+            name = input(f"{c('→ Nama baru: ', 'HIJAU')}").strip()
+            content = input(f"{c('→ Konten baru: ', 'HIJAU')}").strip()
+            proxied = input(f"{c('→ Aktifkan proxy (y/n)? ', 'KUNING')}").strip().lower() == "y"
+            res = cf.update_dns_record(zone_id, rid, rtype, name, content, proxied=proxied)
+            if res.get("success"):
+                print(f"{c('✏️ Diperbarui!', 'HIJAU')}")
+            else:
+                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
+
+        elif p == "5":
+            packs = cf.get_edge_certificates(zone_id)
+            if not packs.get("success"):
+                print(f"{c('❌ Gagal:', 'MERAH')} {packs.get('raw')}")
+            else:
+                print(f"\n{c('=== EDGE CERTIFICATES ===', 'BOLD+CYAN')}")
+                for cert in packs.get("result", []):
+                    print(f"Type   : {cert.get('type', 'N/A')}")
+                    print(f"Status : {cert.get('status', 'N/A')}")
+                    print(f"Hosts  : {', '.join(cert.get('hosts', []))}")
+                    print(f"Issued : {cert.get('issued_on', 'N/A')}")
+                    print(f"Expire : {cert.get('expires_on', 'N/A')}")
+                    print(f"{'─' * 40}")
+
+        elif p == "6":
+            packs = cf.get_edge_certificates(zone_id)
+            if not packs.get("success"):
+                print(f"{c('❌ Gagal:', 'MERAH')} {packs.get('raw')}")
+            else:
+                print(f"\n{c('=== EDGE CERTIFICATES (AKTIF) ===', 'BOLD+CYAN')}")
+                found = False
+                for cert in packs.get("result", []):
+                    if cert.get("status") == "active":
+                        found = True
+                        print(f"Type   : {cert.get('type', 'N/A')}")
+                        print(f"Hosts  : {', '.join(cert.get('hosts', []))}")
+                        print(f"Expire : {cert.get('expires_on', 'N/A')}")
+                        print(f"{'─' * 40}")
+                if not found:
+                    print(f"{c('Belum ada sertifikat aktif.', 'KUNING')}")
+
+        elif ttl_available and p == "7":
+            data = cf.get_total_tls(zone_id)
+            print(f"{c('Status Code:', 'CYAN')} {data.get('status_code')}")
+            print(json.dumps(data, indent=2))
+
+        elif ttl_available and p == "8":
+            ca = input(f"{c('→ CA (google/lets_encrypt/ssl_com) [google]: ', 'HIJAU')}").strip() or "google"
+            vp = input(f"{c('→ Masa aktif (hari, kosong=90): ', 'KUNING')}").strip()
+            vp_int = int(vp) if vp.isdigit() else None
+            resp = cf.set_total_tls(zone_id, enabled=True, certificate_authority=ca, validity_period=vp_int)
+            print(f"{c('Status:', 'CYAN')} {resp.get('status_code')}")
+            print(json.dumps(resp, indent=2))
+            if any(e.get("code") == 1450 for e in (resp.get("errors") or [])):
+                print(f"\n{c('⚠️ Total TLS butuh Advanced Certificate Manager (ACM)', 'MERAH')}")
+
+        elif ttl_available and p == "9":
+            resp = cf.set_total_tls(zone_id, enabled=False)
+            print(f"{c('Status:', 'CYAN')} {resp.get('status_code')}")
+            print(json.dumps(resp, indent=2))
+
+        elif p == str(next_base):
+            resp = cf.list_origin_ca_certs(zone_id)
+            if not resp.get("success"):
+                print(f"{c('❌ Gagal:', 'MERAH')} {resp.get('raw')}")
+            else:
+                result = resp.get("result", [])
+                print(f"\n{c('=== ORIGIN CA CERTIFICATES ===', 'BOLD+KUNING')}")
+                if not result:
+                    print(f"{c('(Kosong) — belum ada sertifikat.', 'KUNING')}")
+                for cert in result:
+                    print(f"- {c('ID:', 'CYAN')} {cert.get('id', 'N/A')}")
+                    print(f"  {c('Hosts:', 'HIJAU')} {', '.join(cert.get('hostnames', []))}")
+                    print(f"  {c('Validity:', 'KUNING')} {cert.get('requested_validity')} hari")
+                    print(f"  {c('Expire:', 'MERAH')} {cert.get('expires_on', 'N/A')}")
+
+        elif p == str(next_base + 1):
+            cert_id = input(f"{c('→ Masukkan certificate_id: ', 'KUNING')}").strip()
+            if not cert_id:
+                print(f"{c('❌ ID tidak boleh kosong.', 'MERAH')}")
+                continue
+            out_dir = os.path.join("origin_ca", zone_name)
+            os.makedirs(out_dir, exist_ok=True)
+            pem_path = os.path.join(out_dir, f"{cert_id}.pem")
+            resp = cf.get_origin_ca_cert(cert_id)
+            if not resp.get("success"):
+                print(f"{c('❌ Gagal:', 'MERAH')} {resp.get('raw')}")
+                continue
+            cert_pem = (resp.get("result") or {}).get("certificate")
+            if not cert_pem:
+                print(f"{c('❌ Tidak ada sertifikat dalam respons.', 'MERAH')}")
+            else:
+                with open(pem_path, "w") as f:
+                    f.write(cert_pem)
+                print(f"\n{c('✅ Tersimpan:', 'HIJAU')} {pem_path}")
+                print(f"{c('ℹ️ Private key tidak bisa diambil ulang.', 'KUNING')}")
+
+        elif p == "0":
+            break
+        else:
+            print(f"{c('⚠️ Pilihan tidak valid.', 'KUNING')}")
+
+# =========================
+# Main Menu
+# =========================
+def main_menu(cf: CloudflareAPI):
+    while True:
+        print(f"\n{c('≡', 'BIRU')} {c('MENU UTAMA', 'BOLD+BIRU')}")
+        print(f"{c('────────────────────────────', 'BIRU')}")
+        print(f"{c('1', 'HIJAU')}. 🌐 Daftar Domain")
+        print(f"{c('2', 'HIJAU')}. ➕ Tambah Domain")
+        print(f"{c('3', 'HIJAU')}. ❌ Hapus Domain")
+        print(f"{c('4', 'KUNING')}. 🔐 Logout (Ganti Akun)")
+        print(f"{c('0', 'MERAH')}. 🚪 Keluar")
+        p = input(f"\n{c('→ Pilih opsi (0-4): ', 'CYAN')}").strip()
+
+        if p == "1":
+            print(f"\n{c('↻ Mengambil daftar domain...', 'KUNING')}")
+            loading("Menghubungkan ke Cloudflare", 0.8)
+            zones_resp = cf.list_zones()
+            if not zones_resp.get("success"):
+                print(f"{c('❌ Gagal:', 'MERAH')} {zones_resp.get('raw')[:100]}...")
+                continue
+            zones = zones_resp.get("result", [])
+            if not zones:
+                print(f"{c('📭 Tidak ada domain.', 'KUNING')}")
+                continue
+            print(f"\n{c('=== DAFTAR DOMAIN ===', 'BOLD+HIJAU')}")
+            for i, z in enumerate(zones, 1):
+                name = z.get("name")
+                status = (z.get("status") or "UNKNOWN").upper()
+                plan = (z.get("plan") or {}).get("name", "Free")
+                icon = "🟢" if status == "ACTIVE" else "🟠"
+                print(f" {c(str(i), 'CYAN')}. {icon} {c(name, 'BOLD')} | {c(plan, 'KUNING')}")
+            idx = input(f"\n{c('→ Pilih domain (0=batal): ', 'CYAN')}").strip()
+            if idx.isdigit() and 1 <= int(idx) <= len(zones):
+                manage_zone(cf, zones[int(idx)-1])
+
+        elif p == "2":
+            domain = input(f"{c('→ Nama domain: ', 'HIJAU')}").strip()
+            res = cf.add_domain(domain)
+            if res.get("success"):
+                print(f"{c('✅ Berhasil ditambahkan!', 'HIJAU')}")
+            else:
+                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
+
+        elif p == "3":
+            domain = input(f"{c('→ Nama domain: ', 'MERAH')}").strip()
+            zid = cf.get_zone_id(domain)
+            if not zid:
+                print(f"{c('❌ Tidak ditemukan.', 'MERAH')}")
+                continue
+            if input(f"{c('⚠️ Ketik HAPUS untuk konfirmasi: ', 'KUNING')}").strip() == "HAPUS":
+                res = cf.delete_zone(zid)
+                if res.get("success"):
+                    print(f"{c('🗑️ Dihapus.', 'HIJAU')}")
+                else:
+                    print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
+
+        elif p == "4":
+            clear_session()
+            print(f"\n{c('👋 Logout berhasil.', 'HIJAU')}")
+            time.sleep(1)
+            main()
+            return
+
+        elif p == "0":
+            print(f"\n{c('👋 Sampai jumpa!', 'HIJAU')}")
+            break
+        else:
+            print(f"{c('⚠️ Tidak valid.', 'KUNING')}")
+
+# =========================
+# Main Function
+# =========================
+def main():
+    show_logo()
+    print(f"{c('Selamat datang di Cloudflare Manager CLI!', 'CYAN')}")
+
+    session = load_session()
+    if session:
+        name = session.get("account_name", "Tidak Dikenal")
+        print(f"{c('📁 Sesi ditemukan:', 'HIJAU')} {c(name, 'BOLD')}")
+        use = input(f"{c('→ Gunakan akun ini? (y/n) [y]: ', 'KUNING')}").strip().lower() or "y"
+        if use == "y":
+            cf = CloudflareAPI(
+                email=session.get("email"),
+                api_key=session.get("api_key"),
+                api_token=session.get("api_token")
+            )
+            main_menu(cf)
+            return
+
+    print(f"\n{c('🔐 LOGIN CLOUDFLARE', 'BOLD+BIRU')}")
+    mode = input(f"{c('→ Pakai API Token? (y/n) [y]: ', 'HIJAU')}").strip().lower() or "y"
+
+    if mode == "y":
+        token = input(f"{c('→ Masukkan API Token: ', 'HIJAU')}").strip()
+        if not token:
+            print(f"{c('❌ Token tidak boleh kosong.', 'MERAH')}")
+            return
+        name = input(f"{c('→ Nama akun (misal: Utama): ', 'KUNING')}").strip() or "Default"
+        cf = CloudflareAPI(api_token=token)
+        save_session({"account_name": name, "api_token": token})
+        print(f"{c('✅ Login berhasil!', 'HIJAU')}")
+    else:
+        email = input(f"{c('→ Email: ', 'HIJAU')}").strip()
+        key = input(f"{c('→ API Key: ', 'HIJAU')}").strip()
+        if not email or not key:
+            print(f"{c('❌ Email dan API Key wajib.', 'MERAH')}")
+            return
+        name = input(f"{c('→ Nama akun: ', 'KUNING')}").strip() or "Default"
+        cf = CloudflareAPI(email=email, api_key=key)
+        save_session({"account_name": name, "email": email, "api_key": key})
+        print(f"{c('✅ Login berhasil!', 'HIJAU')}")
+
+    main_menu(cf)
+
+if __name__ == "__main__":
+    main()
