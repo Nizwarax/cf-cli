@@ -37,4 +37,4 @@ echo "Making the script executable..."
 chmod +x "$SCRIPT_PATH"
 
 echo "Installation complete!"
-echo "You can now run the script by typing 'cf-manager' in your terminal."
+echo "You can now run the script by typing 'cf' in your terminal."
