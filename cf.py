@@ -50,6 +50,17 @@ def loading(msg, duration=0.5):
 # =========================
 # ASCII Logo
 # =========================
+def format_date(date_str):
+    if not date_str:
+        return "N/A"
+    try:
+        from datetime import datetime
+        # Example format: 2024-01-01T12:00:00.123456Z
+        dt_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+        return dt_obj.strftime("%d %B %Y")
+    except (ValueError, ImportError):
+        return date_str  # Return original if parsing fails
+
 def show_logo():
     logo = (
         f"{c('╔══════════════════════════════════╗', 'BIRU')}\n"
@@ -83,6 +94,20 @@ def save_accounts(accounts):
         json.dump(accounts, f, indent=2)
 
 # =========================
+# Penanganan Error API
+# =========================
+def handle_api_error(response):
+    if not response.get("success"):
+        errors = response.get("errors", [])
+        for error in errors:
+            if error.get("code") == 6003:
+                print(f"{c('❌ Gagal:', 'MERAH')} {c('Header permintaan tidak valid.', 'KUNING')}")
+                print(f"{c('   Pastikan API Token atau API Key Anda benar dan memiliki izin yang diperlukan.', 'KUNING')}")
+                return
+        # Fallback for other errors
+        print(f"{c('❌ Gagal:', 'MERAH')} {response.get('raw', 'Respons tidak diketahui')[:100]}...")
+
+# =========================
 # Cloudflare API Wrapper
 # =========================
 class CloudflareAPI:
@@ -105,13 +130,17 @@ class CloudflareAPI:
         try:
             r = requests.request(method, url, headers=self._headers(), timeout=60, **kwargs)
         except requests.RequestException as e:
-            return {"success": False, "errors": [{"message": f"HTTP error: {e}"}], "status_code": None, "raw": None}
+            data = {"success": False, "errors": [{"message": f"HTTP error: {e}"}], "status_code": None, "raw": None}
+            handle_api_error(data)
+            return data
         try:
             data = r.json()
         except Exception:
             data = {"success": False, "errors": [{"message": "Non-JSON response"}]}
         data["status_code"] = r.status_code
         data["raw"] = r.text
+        if not data.get("success"):
+            handle_api_error(data)
         return data
 
     def list_zones(self): return self._req("GET", "/zones")
@@ -187,9 +216,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
 
         if p == "1":
             resp = cf.list_dns_records(zone_id)
-            if not resp.get("success"):
-                print(f"{c('❌ Gagal ambil DNS:', 'MERAH')} {resp.get('raw')[:100]}...")
-            else:
+            if resp.get("success"):
                 print(f"\n{c('=== DNS RECORDS ===', 'BOLD+HIJAU')}")
                 for r in resp.get("result", []):
                     proxied = "cloudflare" if r.get("proxied", False) else "dns only"
@@ -204,16 +231,12 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
             res = cf.add_dns_record(zone_id, rtype, name, content, proxied=proxied)
             if res.get("success"):
                 print(f"{c('✅ Berhasil ditambahkan!', 'HIJAU')}")
-            else:
-                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
 
         elif p == "3":
             rid = input(f"{c('→ ID record: ', 'MERAH')}").strip()
             res = cf.delete_dns_record(zone_id, rid)
             if res.get("success"):
                 print(f"{c('🗑️ Record dihapus.', 'HIJAU')}")
-            else:
-                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
 
         elif p == "4":
             rid = input(f"{c('→ ID record: ', 'HIJAU')}").strip()
@@ -224,28 +247,22 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
             res = cf.update_dns_record(zone_id, rid, rtype, name, content, proxied=proxied)
             if res.get("success"):
                 print(f"{c('✏️ Diperbarui!', 'HIJAU')}")
-            else:
-                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
 
         elif p == "5":
             packs = cf.get_edge_certificates(zone_id)
-            if not packs.get("success"):
-                print(f"{c('❌ Gagal:', 'MERAH')} {packs.get('raw')}")
-            else:
+            if packs.get("success"):
                 print(f"\n{c('=== EDGE CERTIFICATES ===', 'BOLD+CYAN')}")
                 for cert in packs.get("result", []):
                     print(f"Type   : {cert.get('type', 'N/A')}")
                     print(f"Status : {cert.get('status', 'N/A')}")
                     print(f"Hosts  : {', '.join(cert.get('hosts', []))}")
-                    print(f"Issued : {cert.get('issued_on', 'N/A')}")
-                    print(f"Expire : {cert.get('expires_on', 'N/A')}")
+                    print(f"Issued : {format_date(cert.get('issued_on'))}")
+                    print(f"Expire : {format_date(cert.get('expires_on'))}")
                     print(f"{'─' * 40}")
 
         elif p == "6":
             packs = cf.get_edge_certificates(zone_id)
-            if not packs.get("success"):
-                print(f"{c('❌ Gagal:', 'MERAH')} {packs.get('raw')}")
-            else:
+            if packs.get("success"):
                 print(f"\n{c('=== EDGE CERTIFICATES (AKTIF) ===', 'BOLD+CYAN')}")
                 found = False
                 for cert in packs.get("result", []):
@@ -253,7 +270,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                         found = True
                         print(f"Type   : {cert.get('type', 'N/A')}")
                         print(f"Hosts  : {', '.join(cert.get('hosts', []))}")
-                        print(f"Expire : {cert.get('expires_on', 'N/A')}")
+                        print(f"Expire : {format_date(cert.get('expires_on'))}")
                         print(f"{'─' * 40}")
                 if not found:
                     print(f"{c('Belum ada sertifikat aktif.', 'KUNING')}")
@@ -280,9 +297,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
 
         elif p == str(next_base):
             resp = cf.list_origin_ca_certs(zone_id)
-            if not resp.get("success"):
-                print(f"{c('❌ Gagal:', 'MERAH')} {resp.get('raw')}")
-            else:
+            if resp.get("success"):
                 result = resp.get("result", [])
                 print(f"\n{c('=== ORIGIN CA CERTIFICATES ===', 'BOLD+KUNING')}")
                 if not result:
@@ -302,10 +317,8 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
             os.makedirs(out_dir, exist_ok=True)
             pem_path = os.path.join(out_dir, f"{cert_id}.pem")
             resp = cf.get_origin_ca_cert(cert_id)
-            if not resp.get("success"):
-                print(f"{c('❌ Gagal:', 'MERAH')} {resp.get('raw')}")
-                continue
-            cert_pem = (resp.get("result") or {}).get("certificate")
+            if resp.get("success"):
+                cert_pem = (resp.get("result") or {}).get("certificate")
             if not cert_pem:
                 print(f"{c('❌ Tidak ada sertifikat dalam respons.', 'MERAH')}")
             else:
@@ -337,10 +350,8 @@ def main_menu(cf: CloudflareAPI):
             print(f"\n{c('↻ Mengambil daftar domain...', 'KUNING')}")
             loading("Menghubungkan ke Cloudflare", 0.8)
             zones_resp = cf.list_zones()
-            if not zones_resp.get("success"):
-                print(f"{c('❌ Gagal:', 'MERAH')} {zones_resp.get('raw')[:100]}...")
-                continue
-            zones = zones_resp.get("result", [])
+            if zones_resp.get("success"):
+                zones = zones_resp.get("result", [])
             if not zones:
                 print(f"{c('📭 Tidak ada domain.', 'KUNING')}")
                 continue
@@ -360,8 +371,6 @@ def main_menu(cf: CloudflareAPI):
             res = cf.add_domain(domain)
             if res.get("success"):
                 print(f"{c('✅ Berhasil ditambahkan!', 'HIJAU')}")
-            else:
-                print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
 
         elif p == "3":
             domain = input(f"{c('→ Nama domain: ', 'MERAH')}").strip()
@@ -373,8 +382,6 @@ def main_menu(cf: CloudflareAPI):
                 res = cf.delete_zone(zid)
                 if res.get("success"):
                     print(f"{c('🗑️ Dihapus.', 'HIJAU')}")
-                else:
-                    print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
 
         elif p == "4":
             return
@@ -395,10 +402,13 @@ def main():
         total_accounts = len(accounts)
         print(f"{c('Mengambil statistik global...', 'KUNING')}")
         for acc_name, acc_data in accounts.items():
+            print(f"  {c(f'Menghitung domain di akun {acc_name}...', 'KUNING')}")
             cf = CloudflareAPI(email=acc_data.get("email"), api_key=acc_data.get("api_key"), api_token=acc_data.get("api_token"))
             zones_resp = cf.list_zones()
             if zones_resp.get("success"):
                 total_domains += len(zones_resp.get("result", []))
+            else:
+                print(f"  {c(f'Tidak dapat mengambil domain untuk akun {acc_name}.', 'MERAH')}")
 
     print(f"\n✨ {c('Selamat Datang!', 'BOLD+KUNING')} ✨\n")
     print(f"{c('Statistik Global (Semua Akun):', 'BOLD+HIJAU')}")
