@@ -63,28 +63,24 @@ def show_logo():
 # Konfigurasi
 # =========================
 API_BASE = "https://api.cloudflare.com/client/v4"
-SESSION_FILE = os.path.expanduser("~/.acme.sh/cloudflare_session.json")
+CONFIG_FILE = os.path.expanduser("~/.cloudflare-manager-cli.json")
 
 # =========================
-# Session Management
+# Manajemen Akun
 # =========================
-def save_session(data):
-    os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
-    with open(SESSION_FILE, 'w') as f:
-        json.dump(data, f)
-
-def load_session():
-    if os.path.isfile(SESSION_FILE):
+def load_accounts():
+    if os.path.isfile(CONFIG_FILE):
         try:
-            with open(SESSION_FILE, 'r') as f:
+            with open(CONFIG_FILE, 'r') as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
-            return None
-    return None
+            return {}
+    return {}
 
-def clear_session():
-    if os.path.isfile(SESSION_FILE):
-        os.remove(SESSION_FILE)
+def save_accounts(accounts):
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(accounts, f, indent=2)
 
 # =========================
 # Cloudflare API Wrapper
@@ -333,7 +329,7 @@ def main_menu(cf: CloudflareAPI):
         print(f"{c('1', 'HIJAU')}. 🌐 Daftar Domain")
         print(f"{c('2', 'HIJAU')}. ➕ Tambah Domain")
         print(f"{c('3', 'HIJAU')}. ❌ Hapus Domain")
-        print(f"{c('4', 'KUNING')}. 🔐 Logout (Ganti Akun)")
+        print(f"{c('4', 'KUNING')}. 🔐 Ganti Akun")
         print(f"{c('0', 'MERAH')}. 🚪 Keluar")
         p = input(f"\n{c('→ Pilih opsi (0-4): ', 'CYAN')}").strip()
 
@@ -381,10 +377,6 @@ def main_menu(cf: CloudflareAPI):
                     print(f"{c('❌ Gagal:', 'MERAH')} {res.get('raw')}")
 
         elif p == "4":
-            clear_session()
-            print(f"\n{c('👋 Logout berhasil.', 'HIJAU')}")
-            time.sleep(1)
-            main()
             return
 
         elif p == "0":
@@ -393,51 +385,116 @@ def main_menu(cf: CloudflareAPI):
         else:
             print(f"{c('⚠️ Tidak valid.', 'KUNING')}")
 
-# =========================
-# Main Function
-# =========================
 def main():
     show_logo()
-    print(f"{c('Selamat datang di Cloudflare Manager CLI!', 'CYAN')}")
+    total_accounts = 0
+    total_domains = 0
 
-    session = load_session()
-    if session:
-        name = session.get("account_name", "Tidak Dikenal")
-        print(f"{c('📁 Sesi ditemukan:', 'HIJAU')} {c(name, 'BOLD')}")
-        use = input(f"{c('→ Gunakan akun ini? (y/n) [y]: ', 'KUNING')}").strip().lower() or "y"
-        if use == "y":
-            cf = CloudflareAPI(
-                email=session.get("email"),
-                api_key=session.get("api_key"),
-                api_token=session.get("api_token")
-            )
+    accounts = load_accounts()
+    if accounts:
+        total_accounts = len(accounts)
+        print(f"{c('Mengambil statistik global...', 'KUNING')}")
+        for acc_name, acc_data in accounts.items():
+            cf = CloudflareAPI(email=acc_data.get("email"), api_key=acc_data.get("api_key"), api_token=acc_data.get("api_token"))
+            zones_resp = cf.list_zones()
+            if zones_resp.get("success"):
+                total_domains += len(zones_resp.get("result", []))
+
+    print(f"\n✨ {c('Selamat Datang!', 'BOLD+KUNING')} ✨\n")
+    print(f"{c('Statistik Global (Semua Akun):', 'BOLD+HIJAU')}")
+    print(f"  - 🔑 {c('Total Akun Tersimpan', 'CYAN')}\t: {total_accounts}")
+    print(f"  - 🌐 {c('Total Domain Terkelola', 'CYAN')}\t: {total_domains}")
+
+    input(f"\n{c('? Tekan ENTER untuk memulai...', 'KUNING')}")
+
+    while True:
+        accounts = load_accounts()
+        print(f"\n{c('👥', 'CYAN')} {c('PILIH AKUN CLOUDFLARE', 'BOLD+CYAN')}")
+        print(f"{c('──────────────────────────', 'BIRU')}")
+
+        if not accounts:
+            print(f"{c('📭 Belum ada akun tersimpan.', 'KUNING')}")
+        else:
+            acc_list = list(accounts.keys())
+            for i, name in enumerate(acc_list, 1):
+                print(f"{c(i, 'HIJAU')}. {c(name, 'BOLD')}")
+
+        print(f"\n{c('a', 'HIJAU')}. ➕ Tambah Akun Baru")
+        if accounts:
+            print(f"{c('d', 'MERAH')}. ❌ Hapus Akun")
+        print(f"{c('0', 'MERAH')}. 🚪 Keluar")
+
+        choice = input(f"\n{c('→ Pilih (0, a, d, atau nomor): ', 'CYAN')}").strip().lower()
+
+        if choice.isdigit() and 1 <= int(choice) <= len(accounts):
+            acc_name = acc_list[int(choice) - 1]
+            acc_data = accounts[acc_name]
+            cf = CloudflareAPI(email=acc_data.get("email"), api_key=acc_data.get("api_key"), api_token=acc_data.get("api_token"))
             main_menu(cf)
-            return
+        elif choice == 'a':
+            add_account()
+        elif choice == 'd' and accounts:
+            delete_account()
+        elif choice == '0':
+            print(f"\n{c('👋 Sampai jumpa!', 'HIJAU')}")
+            break
+        else:
+            print(f"{c('⚠️ Pilihan tidak valid.', 'KUNING')}")
 
-    print(f"\n{c('🔐 LOGIN CLOUDFLARE', 'BOLD+BIRU')}")
+def add_account():
+    accounts = load_accounts()
+    name = input(f"{c('→ Nama unik untuk akun ini: ', 'KUNING')}").strip()
+    if not name:
+        print(f"{c('❌ Nama tidak boleh kosong.', 'MERAH')}")
+        return
+    if name in accounts:
+        print(f"{c('❌ Akun dengan nama ini sudah ada.', 'MERAH')}")
+        return
+
     mode = input(f"{c('→ Pakai API Token? (y/n) [y]: ', 'HIJAU')}").strip().lower() or "y"
-
-    if mode == "y":
+    new_acc = {}
+    if mode == 'y':
         token = input(f"{c('→ Masukkan API Token: ', 'HIJAU')}").strip()
         if not token:
             print(f"{c('❌ Token tidak boleh kosong.', 'MERAH')}")
             return
-        name = input(f"{c('→ Nama akun (misal: Utama): ', 'KUNING')}").strip() or "Default"
-        cf = CloudflareAPI(api_token=token)
-        save_session({"account_name": name, "api_token": token})
-        print(f"{c('✅ Login berhasil!', 'HIJAU')}")
+        new_acc = {"api_token": token}
     else:
         email = input(f"{c('→ Email: ', 'HIJAU')}").strip()
         key = input(f"{c('→ API Key: ', 'HIJAU')}").strip()
         if not email or not key:
             print(f"{c('❌ Email dan API Key wajib.', 'MERAH')}")
             return
-        name = input(f"{c('→ Nama akun: ', 'KUNING')}").strip() or "Default"
-        cf = CloudflareAPI(email=email, api_key=key)
-        save_session({"account_name": name, "email": email, "api_key": key})
-        print(f"{c('✅ Login berhasil!', 'HIJAU')}")
+        new_acc = {"email": email, "api_key": key}
 
-    main_menu(cf)
+    accounts[name] = new_acc
+    save_accounts(accounts)
+    print(f"\n{c('✅ Akun', 'HIJAU')} {c(name, 'BOLD')} {c('berhasil ditambahkan!', 'HIJAU')}")
+
+def delete_account():
+    accounts = load_accounts()
+    acc_list = list(accounts.keys())
+
+    for i, name in enumerate(acc_list, 1):
+        print(f"{c(i, 'HIJAU')}. {c(name, 'BOLD')}")
+
+    idx_str = input(f"\n{c('→ Pilih nomor akun yang akan dihapus (0=batal): ', 'MERAH')}").strip()
+
+    if idx_str.isdigit():
+        idx = int(idx_str)
+        if 1 <= idx <= len(acc_list):
+            acc_name = acc_list[idx - 1]
+            confirm = input(f"{c(f'⚠️ Ketik HAPUS untuk menghapus akun {acc_name}: ', 'KUNING')}").strip()
+            if confirm == "HAPUS":
+                del accounts[acc_name]
+                save_accounts(accounts)
+                print(f"\n{c('🗑️ Akun', 'HIJAU')} {c(acc_name, 'BOLD')} {c('telah dihapus.', 'HIJAU')}")
+            else:
+                print(f"{c(' Dibatalkan.', 'KUNING')}")
+        elif idx != 0:
+            print(f"{c('⚠️ Nomor tidak valid.', 'KUNING')}")
+    else:
+        print(f"{c('⚠️ Masukkan harus berupa nomor.', 'KUNING')}")
 
 if __name__ == "__main__":
     main()
