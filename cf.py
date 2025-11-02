@@ -55,11 +55,17 @@ def format_date(date_str):
         return "N/A"
     try:
         from datetime import datetime
-        # Example format: 2024-01-01T12:00:00.123456Z
-        dt_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+        # API dapat mengembalikan format dengan atau tanpa mikrodetik
+        # Coba format dengan mikrodetik terlebih dahulu
+        try:
+            dt_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except ValueError:
+            # Jika gagal, coba format tanpa mikrodetik
+            dt_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
         return dt_obj.strftime("%d %B %Y")
     except (ValueError, ImportError):
-        return date_str  # Return original if parsing fails
+        # Jika kedua upaya parsing gagal, kembalikan string asli
+        return date_str
 
 def show_logo():
     logo = (
