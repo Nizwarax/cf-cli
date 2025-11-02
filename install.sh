@@ -25,7 +25,7 @@ echo "Installing required Python libraries..."
 pip3 install requests
 
 # 3. Download the main script from GitHub
-REPO_URL="https://raw.githubusercontent.com/username/repo/main/cf.py"
+REPO_URL="https://raw.githubusercontent.com/Nizwarax/cf-cli/main/cf.py"
 INSTALL_DIR="/usr/local/bin"
 SCRIPT_PATH="$INSTALL_DIR/cf"
 
