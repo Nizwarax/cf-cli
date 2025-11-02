@@ -68,12 +68,14 @@ def format_date(date_str):
         return date_str
 
 def show_logo():
-    logo = (
-        f"{c('╔══════════════════════════════════╗', 'BIRU')}\n"
-        f"{c('║', 'BIRU')}  {c('🔐 CLOUDFLARE MANAGER CLI', 'BOLD+CYAN')}       {c('║', 'BIRU')}\n"
-        f"{c('║', 'BIRU')}  {c('   by Python & Cloudflare API', 'UNGU')}   {c('║', 'BIRU')}\n"
-        f"{c('╚══════════════════════════════════╝', 'BIRU')}"
-    )
+    logo = f"""
+{c('    ╔═╗╔╦╗╔═╗╔══╗╔═╗╔═╗╔═╗╔═╗╦═╗╔═╗', 'CYAN')}
+{c('    ║ ╦║║║╠═╣╚╗╗║╠═╝╠═╣╚═╗║╣ ╠╦╝╚═╗', 'CYAN')}
+{c('    ╚═╝╩ ╩╩ ╩╚══╝╩  ╩ ╩╚═╝╚═╝╩╚═╚═╝', 'CYAN')}
+{c('    ╔════════════════════════════════════════╗', 'BIRU')}
+{c('    ║   ', 'BIRU')}{c('CLOUDFLARE MANAGEMENT CONSOLE', 'BOLD+PUTIH')}{c('    ║', 'BIRU')}
+{c('    ╚════════════════════════════════════════╝', 'BIRU')}
+"""
     print(logo)
 
 def clear_screen():
@@ -204,6 +206,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
 
     while True:
         clear_screen()
+        show_logo()
         print(f"\n{c('⚙️  ZONE MANAGER:', 'BIRU')} {c(zone_name.upper(), 'BOLD+PUTIH')}")
         print(f"{c('─' * 50, 'BIRU')}")
         print(f"{c('1', 'HIJAU')}. 🔍 Lihat DNS Record")
@@ -357,6 +360,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
 def main_menu(cf: CloudflareAPI):
     while True:
         clear_screen()
+        show_logo()
         print(f"\n{c('≡', 'BIRU')} {c('MENU UTAMA', 'BOLD+BIRU')}")
         print(f"{c('────────────────────────────', 'BIRU')}")
         print(f"{c('1', 'HIJAU')}. 🌐 Daftar Domain")
@@ -447,6 +451,7 @@ def main():
     while True:
         accounts = load_accounts()
         clear_screen()
+        show_logo()
         print(f"\n{c('👥', 'CYAN')} {c('PILIH AKUN CLOUDFLARE', 'BOLD+CYAN')}")
         print(f"{c('──────────────────────────', 'BIRU')}")
 
