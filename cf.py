@@ -229,6 +229,8 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
         p = input(f"\n{c('→ Pilih: ', 'CYAN')}").strip()
 
         if p == "1":
+            clear_screen()
+            show_logo()
             resp = cf.list_dns_records(zone_id)
             if resp.get("success"):
                 print(f"\n{c('=== DNS RECORDS ===', 'BOLD+HIJAU')}")
@@ -264,6 +266,8 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                 print(f"{c('✏️ Diperbarui!', 'HIJAU')}")
 
         elif p == "5":
+            clear_screen()
+            show_logo()
             packs = cf.get_edge_certificates(zone_id)
             if packs.get("success"):
                 print(f"\n{c('=== EDGE CERTIFICATES ===', 'BOLD+CYAN')}")
@@ -277,6 +281,8 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                 input(f"\n{c('Tekan ENTER untuk kembali...', 'KUNING')}")
 
         elif p == "6":
+            clear_screen()
+            show_logo()
             packs = cf.get_edge_certificates(zone_id)
             if packs.get("success"):
                 print(f"\n{c('=== EDGE CERTIFICATES (AKTIF) ===', 'BOLD+CYAN')}")
@@ -293,6 +299,8 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                 input(f"\n{c('Tekan ENTER untuk kembali...', 'KUNING')}")
 
         elif ttl_available and p == "7":
+            clear_screen()
+            show_logo()
             data = cf.get_total_tls(zone_id)
             if data.get("success"):
                 result = data.get("result", {})
@@ -322,6 +330,8 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
             print(json.dumps(resp, indent=2))
 
         elif p == str(next_base):
+            clear_screen()
+            show_logo()
             resp = cf.list_origin_ca_certs(zone_id)
             if resp.get("success"):
                 result = resp.get("result", [])
