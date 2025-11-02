@@ -179,8 +179,8 @@ class CloudflareAPI:
         if validity_period is not None:
             payload["validity_period"] = int(validity_period)
         return self._req("POST", f"/zones/{zone_id}/acm/total_tls", data=json.dumps(payload))
-    def list_origin_ca_certs(self, page=1, per_page=50):
-        params = {"page": page, "per_page": per_page}
+    def list_origin_ca_certs(self, zone_id, page=1, per_page=50):
+        params = {"zone_id": zone_id, "page": page, "per_page": per_page}
         return self._req("GET", "/certificates", params=params)
     def get_origin_ca_cert(self, certificate_id): return self._req("GET", f"/certificates/{certificate_id}")
 
@@ -318,25 +318,18 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
             print(json.dumps(resp, indent=2))
 
         elif p == str(next_base):
-            resp = cf.list_origin_ca_certs()
+            resp = cf.list_origin_ca_certs(zone_id)
             if resp.get("success"):
-                all_certs = resp.get("result", [])
-
-                # Filter sertifikat yang relevan dengan zona saat ini
-                zone_certs = [
-                    cert for cert in all_certs
-                    if any(hostname.endswith(zone_name) for hostname in cert.get("hostnames", []))
-                ]
-
-                print(f"\n{c('=== ORIGIN CA CERTIFICATES FOR', 'BOLD+KUNING')} {c(zone_name.upper(), 'BOLD+PUTIH')} ===")
-                if not zone_certs:
-                    print(f"{c('(Tidak ada sertifikat Origin CA yang cocok untuk zona ini)', 'KUNING')}")
+                result = resp.get("result", [])
+                print(f"\n{c('=== ORIGIN CA CERTIFICATES ===', 'BOLD+KUNING')}")
+                if not result:
+                    print(f"{c('(Kosong) — belum ada sertifikat.', 'KUNING')}")
                 else:
-                    for cert in zone_certs:
+                    for cert in result:
                         print(f"- {c('ID:', 'CYAN')} {cert.get('id', 'N/A')}")
                         print(f"  {c('Hosts:', 'HIJAU')} {', '.join(cert.get('hostnames', []))}")
                         print(f"  {c('Validity:', 'KUNING')} {cert.get('requested_validity')} hari")
-                        print(f"  {c('Expire:', 'MERAH')} {format_date(cert.get('expires_on'))}")
+                        print(f"  {c('Expire:', 'MERAH')} {format_date(cert.get('expires_on', 'N/A'))}")
                 input(f"\n{c('Tekan ENTER untuk kembali...', 'KUNING')}")
 
         elif p == str(next_base + 1):
