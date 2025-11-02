@@ -236,6 +236,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                     proxied = "cloudflare" if r.get("proxied", False) else "dns only"
                     color = "MERAH" if proxied == "cloudflare" else "HIJAU"
                     print(f"  {c(r['type'], 'KUNING')} {c(r['name'], 'PUTIH')} → {c(r['content'], 'CYAN')} [{c(proxied, color)}]")
+                input(f"\n{c('Tekan ENTER untuk kembali...', 'KUNING')}")
 
         elif p == "2":
             rtype = input(f"{c('→ Tipe (A/CNAME/TXT): ', 'HIJAU')}").strip().upper()
@@ -273,6 +274,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                     print(f"Issued : {format_date(cert.get('issued_on'))}")
                     print(f"Expire : {format_date(cert.get('expires_on'))}")
                     print(f"{'─' * 40}")
+                input(f"\n{c('Tekan ENTER untuk kembali...', 'KUNING')}")
 
         elif p == "6":
             packs = cf.get_edge_certificates(zone_id)
@@ -288,6 +290,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                         print(f"{'─' * 40}")
                 if not found:
                     print(f"{c('Belum ada sertifikat aktif.', 'KUNING')}")
+                input(f"\n{c('Tekan ENTER untuk kembali...', 'KUNING')}")
 
         elif ttl_available and p == "7":
             data = cf.get_total_tls(zone_id)
@@ -301,6 +304,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
                 print(f"  {c('Detail:', 'PUTIH')} {status if status else 'Tidak ada detail status'}")
             else:
                 print(f"{c('Gagal mengambil status Total TLS.', 'MERAH')}")
+            input(f"\n{c('Tekan ENTER untuk kembali...', 'KUNING')}")
 
         elif ttl_available and p == "8":
             ca = input(f"{c('→ CA (google/lets_encrypt/ssl_com) [google]: ', 'HIJAU')}").strip() or "google"
