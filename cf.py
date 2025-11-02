@@ -76,6 +76,10 @@ def show_logo():
     )
     print(logo)
 
+def clear_screen():
+    """Membersihkan layar terminal."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
 # =========================
 # Konfigurasi
 # =========================
@@ -199,6 +203,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
     ttl_available, _ = total_tls_available(cf, zone_id)
 
     while True:
+        clear_screen()
         print(f"\n{c('⚙️  ZONE MANAGER:', 'BIRU')} {c(zone_name.upper(), 'BOLD+PUTIH')}")
         print(f"{c('─' * 50, 'BIRU')}")
         print(f"{c('1', 'HIJAU')}. 🔍 Lihat DNS Record")
@@ -351,6 +356,7 @@ def manage_zone(cf: CloudflareAPI, zone: dict):
 # =========================
 def main_menu(cf: CloudflareAPI):
     while True:
+        clear_screen()
         print(f"\n{c('≡', 'BIRU')} {c('MENU UTAMA', 'BOLD+BIRU')}")
         print(f"{c('────────────────────────────', 'BIRU')}")
         print(f"{c('1', 'HIJAU')}. 🌐 Daftar Domain")
@@ -385,6 +391,13 @@ def main_menu(cf: CloudflareAPI):
             res = cf.add_domain(domain)
             if res.get("success"):
                 print(f"{c('✅ Berhasil ditambahkan!', 'HIJAU')}")
+                result = res.get("result", {})
+                name_servers = result.get("name_servers", [])
+                if name_servers:
+                    print(f"\n{c('ℹ️ Silakan ganti nameserver domain Anda ke:', 'KUNING')}")
+                    for ns in name_servers:
+                        print(f"  - {c(ns, 'CYAN')}")
+                    input(f"\n{c('Tekan ENTER untuk melanjutkan...', 'KUNING')}")
 
         elif p == "3":
             domain = input(f"{c('→ Nama domain: ', 'MERAH')}").strip()
@@ -433,6 +446,7 @@ def main():
 
     while True:
         accounts = load_accounts()
+        clear_screen()
         print(f"\n{c('👥', 'CYAN')} {c('PILIH AKUN CLOUDFLARE', 'BOLD+CYAN')}")
         print(f"{c('──────────────────────────', 'BIRU')}")
 
