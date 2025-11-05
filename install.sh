@@ -1,40 +1,94 @@
 #!/bin/bash
 
-# Pastikan script dijalankan dengan hak akses root (sudo)
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root"
-   exit 1
+# --- Deteksi Lingkungan ---
+IS_TERMUX=false
+if [[ -n "$PREFIX" ]] && [[ "$PREFIX" == *com.termux* ]]; then
+    IS_TERMUX=true
 fi
 
-
-
-# 1. Cek dependensi: python3 dan pip3
-echo "Checking dependencies..."
-if ! command -v python3 &> /dev/null; then
-    echo "python3 could not be found, please install it first."
+# --- Fungsi Logging ---
+log() {
+    echo "[*] $1"
+}
+error() {
+    echo "[!] $1" >&2
     exit 1
+}
+
+# --- Cek dependensi dasar ---
+log "Checking required tools..."
+for cmd in python3 curl; do
+    if ! command -v "$cmd" &> /dev/null; then
+        if [[ "$IS_TERMUX" == true ]]; then
+            error "$cmd not found. Please run: pkg install python curl"
+        else
+            error "$cmd not found. Please install it first (e.g., apt install python3 curl)."
+        fi
+    fi
+done
+
+# --- Pastikan pip tersedia ---
+if ! python3 -m pip --version &> /dev/null; then
+    log "Installing pip..."
+    if [[ "$IS_TERMUX" == true ]]; then
+        python3 -m ensurepip --user
+    else
+        python3 -m ensurepip --user --upgrade
+    fi
 fi
 
-if ! command -v pip3 &> /dev/null; then
-    echo "pip3 could not be found, please install it first."
-    exit 1
+# --- Instal library Python ---
+log "Installing Python dependencies..."
+python3 -m pip install --user --quiet requests
+
+# --- Tentukan direktori instalasi ---
+if [[ "$IS_TERMUX" == true ]]; then
+    INSTALL_DIR="$PREFIX/bin"
+    log "Detected Termux. Installing to $INSTALL_DIR"
+else
+    INSTALL_DIR="$HOME/.local/bin"
+    log "Detected standard Linux/VPS. Installing to $INSTALL_DIR"
 fi
 
-# 2. Install library 'requests' menggunakan pip3
-echo "Installing required Python libraries..."
-pip3 install requests
+mkdir -p "$INSTALL_DIR"
 
-# 3. Download the main script from GitHub
-REPO_URL="https://raw.githubusercontent.com/Nizwarax/cf-cli/main/cf.py"
-INSTALL_DIR="/usr/local/bin"
+# --- Download script utama ---
 SCRIPT_PATH="$INSTALL_DIR/cf"
+REPO_URL="https://raw.githubusercontent.com/Nizwarax/cf-cli/main/cf.py"
 
-echo "Downloading the main script to $SCRIPT_PATH..."
-curl -sSL "$REPO_URL" -o "$SCRIPT_PATH"
+log "Downloading cf.py..."
+if ! curl -sSL "$REPO_URL" -o "$SCRIPT_PATH"; then
+    error "Failed to download cf.py. Check your internet or URL."
+fi
 
-# 4. Jadikan cf executable
-echo "Making the script executable..."
+# --- Tambahkan shebang jika belum ada ---
+if ! head -n1 "$SCRIPT_PATH" | grep -q "^#!"; then
+    sed -i '1i#!/usr/bin/env python3' "$SCRIPT_PATH"
+fi
+
+# --- Jadikan executable ---
 chmod +x "$SCRIPT_PATH"
 
-echo "Installation complete!"
-echo "You can now run the script by typing 'cf' in your terminal."
+# --- Setup PATH (jika diperlukan) ---
+if [[ "$IS_TERMUX" == false ]]; then
+    # Di VPS/Linux non-Termux
+    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+        log "Adding $INSTALL_DIR to PATH in ~/.bashrc"
+        echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> ~/.bashrc
+        export PATH="$PATH:$INSTALL_DIR"
+    fi
+else
+    # Termux: $PREFIX/bin sudah otomatis di PATH
+    log "Termux: $INSTALL_DIR is already in PATH"
+fi
+
+# --- Selesai ---
+log "Installation complete!"
+echo
+echo "You can now run the tool by typing:"
+echo
+echo "    cf"
+echo
+if [[ "$IS_TERMUX" == false ]]; then
+    echo "If 'cf' is not found, restart your shell or run: source ~/.bashrc"
+fi
