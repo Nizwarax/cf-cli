@@ -8,7 +8,6 @@ YELLOW="\033[33m"
 BLUE="\033[34m"
 MAGENTA="\033[35m"
 CYAN="\033[36m"
-BOLD="\033[1m"
 
 # --- Deteksi Lingkungan ---
 IS_TERMUX=false
@@ -17,34 +16,29 @@ if [[ -n "$PREFIX" ]] && [[ "$PREFIX" == *com.termux* ]]; then
 fi
 
 # --- Fungsi Logging Berwarna ---
-log() {
-    echo -e "${CYAN}[*]${RESET} $1"
-}
-
-success() {
-    echo -e "${GREEN}[✓]${RESET} $1"
-}
-
-warn() {
-    echo -e "${YELLOW}[!]${RESET} $1"
-}
-
-error() {
-    echo -e "${RED}[✗]${RESET} $1" >&2
-    exit 1
-}
+log() { echo -e "${CYAN}[*]${RESET} $1"; }
+success() { echo -e "${GREEN}[✓]${RESET} $1"; }
+warn() { echo -e "${YELLOW}[!]${RESET} $1"; }
+error() { echo -e "${RED}[✗]${RESET} $1" >&2; exit 1; }
 
 # --- Cek dependensi dasar ---
 log "Checking required tools..."
 for cmd in python3 curl; do
     if ! command -v "$cmd" &> /dev/null; then
         if [[ "$IS_TERMUX" == true ]]; then
-            error "$cmd not found. Please run: ${YELLOW}pkg install python curl${RESET}"
+            error "$cmd not found. Please run: pkg install python curl"
         else
-            error "$cmd not found. Please install it first (e.g., ${YELLOW}apt install python3 curl${RESET})."
+            error "$cmd not found. Please install it first (e.g., apt install python3 curl)."
         fi
     fi
 done
+
+# --- Nonaktifkan virtual environment sementara (jika ada) ---
+if [[ -n "$VIRTUAL_ENV" ]]; then
+    unset VIRTUAL_ENV
+    # Hapus path venv dari PATH
+    export PATH=$(echo "$PATH" | sed 's|/.*/\.cf-venv/bin:||g; s|/.*/\.cf-venv/bin||g')
+fi
 
 # --- Pastikan pip tersedia ---
 if ! python3 -m pip --version &> /dev/null; then
@@ -59,7 +53,7 @@ if command -v pip3 &> /dev/null; then
 elif python3 -m pip --version &> /dev/null; then
     python3 -m pip install --user --quiet requests
 else
-    error "pip not available and could not be auto-installed."
+    error "pip not available and could not be installed automatically."
 fi
 
 # --- Tentukan direktori instalasi ---
@@ -90,19 +84,28 @@ fi
 # --- Jadikan executable ---
 chmod +x "$SCRIPT_PATH"
 
-# --- Selesai (tanpa modifikasi PATH otomatis) ---
+# --- Setup PATH: hanya di VPS, dan hanya ke ~/.bashrc ---
+if [[ "$IS_TERMUX" == false ]]; then
+    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+        # Tambahkan ke ~/.bashrc jika belum ada
+        if ! grep -q "$INSTALL_DIR" ~/.bashrc 2>/dev/null; then
+            echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> ~/.bashrc
+        fi
+        export PATH="$PATH:$INSTALL_DIR"
+        log "Added $INSTALL_DIR to PATH in ~/.bashrc"
+    fi
+else
+    log "Termux: $INSTALL_DIR is already in PATH"
+fi
+
+# --- Selesai ---
 echo
 success "Installation complete!"
 echo
-
-if [[ "$IS_TERMUX" == true ]]; then
-    echo -e "${GREEN}You can now run the tool by typing:${RESET}"
-    echo
-    echo -e "    ${MAGENTA}cf${RESET}"
-else
-    echo -e "${GREEN}Run the tool using its full path:${RESET}"
-    echo
-    echo -e "    ${MAGENTA}$SCRIPT_PATH${RESET}"
-    echo
-    warn "Optional: Add $INSTALL_DIR to your PATH manually if you want to use 'cf' directly."
+echo -e "${GREEN}You can now run the tool by typing:${RESET}"
+echo
+echo -e "    ${MAGENTA}cf${RESET}"
+echo
+if [[ "$IS_TERMUX" == false ]]; then
+    warn "If 'cf' is not found, restart your shell or run: ${CYAN}source ~/.bashrc${RESET}"
 fi
