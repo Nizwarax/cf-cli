@@ -49,16 +49,18 @@ done
 # --- Pastikan pip tersedia ---
 if ! python3 -m pip --version &> /dev/null; then
     log "Installing pip..."
-    if [[ "$IS_TERMUX" == true ]]; then
-        python3 -m ensurepip --user
-    else
-        python3 -m ensurepip --user --upgrade
-    fi
+    python3 -m ensurepip --user --upgrade > /dev/null 2>&1
 fi
 
 # --- Instal library Python ---
 log "Installing Python dependencies..."
-python3 -m pip install --user --quiet requests || error "Failed to install 'requests'"
+if command -v pip3 &> /dev/null; then
+    pip3 install --user --quiet requests
+elif python3 -m pip --version &> /dev/null; then
+    python3 -m pip install --user --quiet requests
+else
+    error "pip not available and could not be auto-installed."
+fi
 
 # --- Tentukan direktori instalasi ---
 if [[ "$IS_TERMUX" == true ]]; then
@@ -77,7 +79,7 @@ REPO_URL="https://raw.githubusercontent.com/Nizwarax/cf-cli/main/cf.py"
 
 log "Downloading cf.py from GitHub..."
 if ! curl -sSL "$REPO_URL" -o "$SCRIPT_PATH"; then
-    error "Failed to download cf.py. Please check your internet connection or the URL."
+    error "Failed to download cf.py. Please check your internet connection."
 fi
 
 # --- Tambahkan shebang jika belum ada ---
@@ -88,25 +90,19 @@ fi
 # --- Jadikan executable ---
 chmod +x "$SCRIPT_PATH"
 
-# --- Setup PATH (jika diperlukan) ---
-if [[ "$IS_TERMUX" == false ]]; then
-    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        log "Adding $INSTALL_DIR to PATH in ~/.bashrc"
-        echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> ~/.bashrc
-        export PATH="$PATH:$INSTALL_DIR"
-    fi
-else
-    log "Termux: ${INSTALL_DIR} is already in PATH"
-fi
-
-# --- Selesai ---
+# --- Selesai (tanpa modifikasi PATH otomatis) ---
 echo
 success "Installation complete!"
 echo
-echo -e "${GREEN}You can now run the tool by typing:${RESET}"
-echo
-echo -e "    ${MAGENTA}cf${RESET}"
-echo
-if [[ "$IS_TERMUX" == false ]]; then
-    warn "If 'cf' is not found, restart your shell or run: ${CYAN}source ~/.bashrc${RESET}"
+
+if [[ "$IS_TERMUX" == true ]]; then
+    echo -e "${GREEN}You can now run the tool by typing:${RESET}"
+    echo
+    echo -e "    ${MAGENTA}cf${RESET}"
+else
+    echo -e "${GREEN}Run the tool using its full path:${RESET}"
+    echo
+    echo -e "    ${MAGENTA}$SCRIPT_PATH${RESET}"
+    echo
+    warn "Optional: Add $INSTALL_DIR to your PATH manually if you want to use 'cf' directly."
 fi
