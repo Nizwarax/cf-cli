@@ -1,112 +1,110 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# --- ANSI Color Codes ---
-RESET="\033[0m"
-RED="\033[31m"
-GREEN="\033[32m"
-YELLOW="\033[33m"
-BLUE="\033[34m"
-MAGENTA="\033[35m"
-CYAN="\033[36m"
+set -e  # Hentikan jika ada error
+
 BOLD="\033[1m"
+GREEN="\033[0;32m"
+BLUE="\033[0;34m"
+YELLOW="\033[1;33m"
+RED="\033[0;31m"
+NC="\033[0m"  # No Color
 
-# --- Deteksi Lingkungan ---
-IS_TERMUX=false
-if [[ -n "$PREFIX" ]] && [[ "$PREFIX" == *com.termux* ]]; then
+info()  { echo -e "${BLUE}[*]${NC} $1"; }
+warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
+good()  { echo -e "${GREEN}[✓]${NC} $1"; }
+error() { echo -e "${RED}[✗]${NC} $1"; }
+
+# === Deteksi lingkungan ===
+if [ -n "$TERMUX_VERSION" ]; then
     IS_TERMUX=true
+    BIN_DIR="$HOME/bin"
+    VENV_DIR="$HOME/.cf-venv"
+else
+    IS_TERMUX=false
+    BIN_DIR="$HOME/.local/bin"
+    VENV_DIR="$HOME/.cf-venv"
 fi
 
-# --- Fungsi Logging Berwarna ---
-log() {
-    echo -e "${CYAN}[*]${RESET} $1"
-}
+# === Pastikan direktori tujuan ada ===
+mkdir -p "$BIN_DIR"
 
-success() {
-    echo -e "${GREEN}[✓]${RESET} $1"
-}
-
-warn() {
-    echo -e "${YELLOW}[!]${RESET} $1"
-}
-
-error() {
-    echo -e "${RED}[✗]${RESET} $1" >&2
-    exit 1
-}
-
-# --- Cek dependensi dasar ---
-log "Checking required tools..."
-for cmd in python3 curl; do
+# === Cek dependensi dasar ===
+info "Checking required tools..."
+for cmd in curl python3; do
     if ! command -v "$cmd" &> /dev/null; then
-        if [[ "$IS_TERMUX" == true ]]; then
-            error "$cmd not found. Please run: ${YELLOW}pkg install python curl${RESET}"
-        else
-            error "$cmd not found. Please install it first (e.g., ${YELLOW}apt install python3 curl${RESET})."
-        fi
+        error "Required command '$cmd' not found. Please install it first."
+        exit 1
     fi
 done
 
-# --- Pastikan pip tersedia ---
-if ! python3 -m pip --version &> /dev/null; then
-    log "Installing pip..."
-    if [[ "$IS_TERMUX" == true ]]; then
-        python3 -m ensurepip --user
+# === Cek atau buat virtual environment ===
+if [ ! -d "$VENV_DIR" ]; then
+    info "Creating virtual environment at $VENV_DIR..."
+    python3 -m venv "$VENV_DIR" || {
+        error "Failed to create virtual environment. Make sure 'python3-venv' is installed."
+        if [ "$IS_TERMUX" = false ]; then
+            warn "On Debian/Ubuntu, run: sudo apt install python3-venv"
+            warn "On CentOS/RHEL, run: sudo yum install python3-pip && python3 -m ensurepip"
+        fi
+        exit 1
+    }
+fi
+
+# === Aktifkan venv secara sementara untuk instalasi ===
+info "Installing/upgrading Python dependencies..."
+"$VENV_DIR/bin/python" -m pip install --upgrade pip
+"$VENV_DIR/bin/python" -m pip install requests
+
+# === Unduh cf.py ===
+info "Downloading cf.py from GitHub..."
+CF_SCRIPT_URL="https://raw.githubusercontent.com/Nizwarax/cf-cli/main/cf.py"
+CF_LOCAL="$BIN_DIR/cf"
+
+curl -sSL "$CF_SCRIPT_URL" -o "$CF_LOCAL" || {
+    error "Failed to download cf.py"
+    exit 1
+}
+
+chmod +x "$CF_LOCAL"
+
+# === Buat wrapper shell (opsional tapi lebih bersih) ===
+cat > "$BIN_DIR/cf" << EOF
+#!/usr/bin/env bash
+exec "$VENV_DIR/bin/python" "$BIN_DIR/cf.py" "\$@"
+EOF
+chmod +x "$BIN_DIR/cf"
+
+# === Tambahkan ke PATH (jika belum) ===
+PROFILE=""
+if [ "$IS_TERMUX" = true ]; then
+    PROFILE="$HOME/.bashrc"
+else
+    if [ -f "$HOME/.bashrc" ]; then
+        PROFILE="$HOME/.bashrc"
+    elif [ -f "$HOME/.profile" ]; then
+        PROFILE="$HOME/.profile"
     else
-        python3 -m ensurepip --user --upgrade
+        PROFILE="$HOME/.bashrc"
+        touch "$PROFILE"
     fi
 fi
 
-# --- Instal library Python ---
-log "Installing Python dependencies..."
-python3 -m pip install --user --quiet requests || error "Failed to install 'requests'"
+# Tambahkan ke PATH hanya jika belum ada
+if ! grep -q "$BIN_DIR" "$PROFILE" 2>/dev/null; then
+    info "Adding $BIN_DIR to PATH in $PROFILE"
+    echo "export PATH=\"\$PATH:$BIN_DIR\"" >> "$PROFILE"
+fi
 
-# --- Tentukan direktori instalasi ---
-if [[ "$IS_TERMUX" == true ]]; then
-    INSTALL_DIR="$PREFIX/bin"
-    log "Detected Termux. Installing to ${INSTALL_DIR}"
+# === Selesai ===
+good "Installation complete!"
+
+if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
+    good "You can now run: cf"
 else
-    INSTALL_DIR="$HOME/.local/bin"
-    log "Detected standard Linux/VPS. Installing to ${INSTALL_DIR}"
+    warn "To use 'cf' immediately, run:"
+    echo "    source \"$PROFILE\""
+    echo ""
+    warn "Or restart your shell."
 fi
 
-mkdir -p "$INSTALL_DIR"
-
-# --- Download script utama ---
-SCRIPT_PATH="$INSTALL_DIR/cf"
-REPO_URL="https://raw.githubusercontent.com/Nizwarax/cf-cli/main/cf.py"
-
-log "Downloading cf.py from GitHub..."
-if ! curl -sSL "$REPO_URL" -o "$SCRIPT_PATH"; then
-    error "Failed to download cf.py. Please check your internet connection or the URL."
-fi
-
-# --- Tambahkan shebang jika belum ada ---
-if ! head -n1 "$SCRIPT_PATH" | grep -q "^#!"; then
-    sed -i '1i#!/usr/bin/env python3' "$SCRIPT_PATH"
-fi
-
-# --- Jadikan executable ---
-chmod +x "$SCRIPT_PATH"
-
-# --- Setup PATH (jika diperlukan) ---
-if [[ "$IS_TERMUX" == false ]]; then
-    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        log "Adding $INSTALL_DIR to PATH in ~/.bashrc"
-        echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> ~/.bashrc
-        export PATH="$PATH:$INSTALL_DIR"
-    fi
-else
-    log "Termux: ${INSTALL_DIR} is already in PATH"
-fi
-
-# --- Selesai ---
-echo
-success "Installation complete!"
-echo
-echo -e "${GREEN}You can now run the tool by typing:${RESET}"
-echo
-echo -e "    ${MAGENTA}cf${RESET}"
-echo
-if [[ "$IS_TERMUX" == false ]]; then
-    warn "If 'cf' is not found, restart your shell or run: ${CYAN}source ~/.bashrc${RESET}"
-fi
+good "Note: This tool runs in an isolated virtual environment for safety."
