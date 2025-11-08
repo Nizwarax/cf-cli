@@ -415,18 +415,24 @@ def main_menu(cf: CloudflareAPI):
                     print(f"\n{c('ℹ️ Silakan ganti nameserver domain Anda ke:', 'KUNING')}")
                     for ns in name_servers:
                         print(f"  - {c(ns, 'CYAN')}")
-                    input(f"\n{c('Tekan ENTER untuk melanjutkan...', 'KUNING')}")
+            else:
+                print(f"\n{c('❌ Gagal menambahkan domain.', 'MERAH')}")
+            input(f"\n{c('Tekan ENTER untuk melanjutkan...', 'KUNING')}")
 
         elif p == "3":
             domain = input(f"{c('→ Nama domain: ', 'MERAH')}").strip()
             zid = cf.get_zone_id(domain)
             if not zid:
                 print(f"{c('❌ Tidak ditemukan.', 'MERAH')}")
+                input(f"\n{c('Tekan ENTER untuk melanjutkan...', 'KUNING')}")
                 continue
             if input(f"{c('⚠️ Ketik HAPUS untuk konfirmasi: ', 'KUNING')}").strip() == "HAPUS":
                 res = cf.delete_zone(zid)
                 if res.get("success"):
                     print(f"{c('🗑️ Dihapus.', 'HIJAU')}")
+                else:
+                    print(f"\n{c('❌ Gagal menghapus domain.', 'MERAH')}")
+                input(f"\n{c('Tekan ENTER untuk melanjutkan...', 'KUNING')}")
 
         elif p == "4":
             return
