@@ -27,19 +27,11 @@ Before using the script, you need to create a Cloudflare API Token with the corr
 3.  Click **Create Token**, then select **Create Custom Token**.
 4.  Give your token a descriptive name (e.g., "Manager CLI Script").
 5.  Set the following permissions:
-    *   `Zone` - `Zone` - `Read`
+    *   `Account` - `Account: SSL and Certificates` - `Read`
+    *   `Zone` - `SSL and Certificates` - `read`
     *   `Zone` - `Zone` - `Edit`
-    *   `Zone` - `DNS` - `Read`
     *   `Zone` - `DNS` - `Edit`
+    *   
 6.  Click **Continue to summary**, then **Create Token**.
 7.  **Copy the generated token immediately.** You will not be able to see it again.
 
-Once you have the token, run the script and use the "Add New Account" option to add it.
-
-## Usage
-
-Once the installation is complete, you can run the script by typing `cf` in your terminal:
-
-```bash
-cf
-```
