@@ -162,7 +162,28 @@ class CloudflareAPI:
             handle_api_error(data)
         return data
 
-    def list_zones(self): return self._req("GET", "/zones")
+    def list_zones(self):
+        all_zones = []
+        page = 1
+        while True:
+            params = {"page": page, "per_page": 50}  # Ambil 50 domain per halaman
+            resp = self._req("GET", "/zones", params=params)
+
+            if not resp.get("success"):
+                # Jika terjadi error, langsung kembalikan respons error tersebut
+                return resp
+
+            zones = resp.get("result", [])
+            if not zones:
+                # Jika tidak ada lagi domain di halaman ini, hentikan loop
+                break
+
+            all_zones.extend(zones)
+            page += 1
+
+        # Kembalikan struktur data yang sukses dengan semua domain yang terkumpul
+        return {"success": True, "result": all_zones, "errors": [], "messages": []}
+
     def add_domain(self, domain): return self._req("POST", "/zones", json={"name": domain, "jump_start": True})
     def get_zone_id(self, domain):
         zones = self.list_zones()
