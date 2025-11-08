@@ -110,12 +110,21 @@ def handle_api_error(response):
     if not response.get("success"):
         errors = response.get("errors", [])
         for error in errors:
-            if error.get("code") == 6003:
+            code = error.get("code")
+            message = error.get("message", "")
+            if code == 6003:
                 print(f"{c('❌ Gagal:', 'MERAH')} {c('Header permintaan tidak valid.', 'KUNING')}")
-                print(f"{c('   Pastikan API Token atau API Key Anda benar dan memiliki izin yang diperlukan.', 'KUNING')}")
+                print(f"{c('   Pastikan API Token atau API Key Anda benar.', 'KUNING')}")
+                return
+            # Check for permission-related error messages
+            if "Requires permission" in message or "is not authorized to perform" in message:
+                print(f"\n{c('❌ Gagal: Izin Ditolak', 'MERAH')}")
+                print(f"{c('   API Token Anda tidak memiliki izin yang diperlukan.', 'KUNING')}")
+                print(f"{c('   Untuk menambah domain, pastikan token memiliki izin `Zone` - `Zone` - `Edit`.', 'KUNING')}")
+                print(f"{c('   Pesan detail:', 'PUTIH')} {message}")
                 return
         # Fallback for other errors
-        print(f"{c('❌ Gagal:', 'MERAH')} {response.get('raw', 'Respons tidak diketahui')[:100]}...")
+        print(f"{c('❌ Gagal:', 'MERAH')} {response.get('raw', 'Respons tidak diketahui')[:150]}...")
 
 # =========================
 # Cloudflare API Wrapper
